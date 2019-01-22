@@ -1,0 +1,33 @@
+{
+  "name": "refstore",
+  "version": "0.1.0",
+  "description": "Let objects move and talk",
+  "main": "RefStore.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "tape test/*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arso-project/refstore.git"
+  },
+  "author": "Franz Heinzmann <frando@unbiskant.org>",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/arso-project/refstore/issues"
+  },
+  "homepage": "https://github.com/arso-project/refstore#readme",
+  "devDependencies": {
+    "duplexify": "^3.6.1",
+    "msgpack-lite": "^0.1.26",
+    "multiplex": "^6.7.0",
+    "pump": "^3.0.0",
+    "tape": "^4.9.2"
+  },
+  "dependencies": {
+    "nanoid-dictionary": "^2.0.0",
+    "through2": "^3.0.0"
+  }
+}
