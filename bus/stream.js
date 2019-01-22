@@ -4,122 +4,122 @@ const through = require('through2')
 const pump = require('pump')
 const msgpack = require('msgpack-lite')
 const nanoid = require('nanoid')
+const EventEmitter = require('events').EventEmitter
 
-var READABLE = 1 // 10
-var WRITABLE = 2 // 01
-// var DUPLEX = 1 | 2 // 11
+const { isStream, transform, getStreamType, READABLE, WRITABLE, isObjectStream, maybeConvert } = require('../util/stream')
 
-module.exports = function streamBus (opts) {
-  opts = opts || {}
-  opts.id = opts.id || nanoid()
-  // const objectMode = opts.objectMode || false
-  const stream = multiplex({ objectMode: false }, onstream)
+module.exports = (opts) => new StreamBus(opts)
 
-  let transports = new Map()
+class StreamBus extends EventEmitter {
+  constructor (opts) {
+    super()
+    const self = this
+    opts = opts || {}
 
-  let queue = []
-  let receiveMessage = queue.push.bind(queue)
+    this.localId = null
+    this.remoteId = null
 
-  var rpc = stream.createSharedStream('rpc')
+    this.stream = multiplex({ objectMode: false }, (stream, name) => {
+      this.stransports.set(stream, name)
+    })
 
-  var send = through.obj(function (chunk, enc, next) {
-    chunk = encode(chunk)
-    // chunk = JSON.stringify(chunk)
-    chunk = msgpack.encode(chunk)
-    this.push(chunk)
-    next()
-  })
-  var recv = through.obj(function (chunk, enc, next) {
-    // chunk = JSON.parse(chunk)
-    chunk = msgpack.decode(chunk)
-    chunk = decode(chunk)
-    this.push(chunk)
-    next()
-  })
+    this.transports = new Map()
 
-  pump(send, rpc)
-  pump(rpc, recv)
+    this.queue = []
+    this.receiveMessage = this.queue.push.bind(this.queue)
 
-  recv.on('data', data => receiveMessage(data))
+    const rpc = this.stream.createSharedStream('rpc')
 
-  return {
-    onmessage: fn => { 
-      if (queue.length) queue.forEach(msg => fn(msg))
-      receiveMessage = msg => fn(msg)
-    },
-    postMessage: msg => send.write(msg),
-    stream
+    const mapArgs = (msg, fn) => {
+      if (!msg.opts || !msg.opts.args) return msg
+      msg.opts.args = msg.opts.args.map(arg => arg ? fn(arg) : arg)
+      return msg
+    }
+
+    this.send = transform(msg => {
+      msg = mapArgs(msg, arg => self.encodeArg(arg))
+      msg = msgpack.encode(msg)
+      return msg
+    })
+
+    this.recv = transform(msg => {
+      msg = msgpack.decode(msg)
+      msg = mapArgs(msg, arg => self.decodeArg(arg))
+      return msg
+    })
+
+    this.recv.on('data', msg => {
+      if (msg.type === 'hello') this.remoteId = msg.id
+      this.receiveMessage(msg)
+    })
+
+    pump(this.send, rpc)
+    pump(rpc, this.recv)
   }
 
-  function onstream (stream, name) {
-    transports.set(name, stream)
+  postMessage (msg) {
+    if (msg.type === 'hello') this.localId = msg.id
+    this.send.write(msg)
   }
 
-  function getTransportStream (id, type) {
+  onmessage (fn) {
+    if (this.queue.length) this.queue.forEach(msg => fn(msg))
+    this.receiveMessage = msg => fn(msg)
+  }
+
+  getTransportStream (id, type) {
     var sid = `${id}-${type}`
-    if (!transports[sid]) transports[sid] = stream.createSharedStream(sid)
-    return transports[sid]
+    if (!this.transports.has(sid)) this.transports.set(sid, this.stream.createSharedStream(sid))
+    return this.transports.get(sid)
   }
 
-  function encode (msg) {
-    if (msg.args) msg.args = msg.args.map(arg => {
-        // if (isBuffer(arg)) // handled by msgpack
-        if (isStream(arg.value)) {
-          const id = nanoid()
-          // const id = msg.ref.space + '-' + msg.ref.id
-          arg.value = prepareStream(arg.value, id)
-          arg.valuetype = 'stream'
-          arg.valueid = id
-        }
-        return arg
-      })
-    return msg
+  encodeArg (arg) {
+    if (isStream(arg.value)) {
+      arg.valueid = nanoid()
+      arg.valuetype = 'stream'
+      arg.value = this.prepareStream(arg.value, arg.valueid)
+    }
+    return arg
   }
 
-  function decode (msg) {
-    if (msg.args) msg.args = msg.args.map(arg => {
-        if (arg.valuetype === 'stream') {
-          // const id = msg.ref.space + '-' + msg.ref.id
-          const stream = resolveStream(arg.value, arg.valueid)
-          delete arg.valuetype
-          delete arg.valueid
-          arg.value = stream
-        }
-        return arg
-      })
-    
-    return msg
+  decodeArg (arg) {
+    if (arg.valuetype === 'stream') {
+      arg.value = this.resolveStream(arg.value, arg.valueid)
+      delete arg.valuetype
+      delete arg.valueid
+    }
+    return arg
   }
 
-  function prepareStream (stream, id) {
+  prepareStream (stream, id) {
     var streamType = getStreamType(stream)
     var objectMode = isObjectStream(stream)
 
     if (streamType & READABLE) {
-      var rsT = getTransportStream(id, READABLE, stream)
+      var rsT = this.getTransportStream(id, READABLE, stream)
       pump(stream, maybeConvert(objectMode, false), rsT)
     }
     if (streamType & WRITABLE) {
-      var wsT = getTransportStream(id, WRITABLE, stream)
+      var wsT = this.getTransportStream(id, WRITABLE, stream)
       pump(wsT, maybeConvert(false, objectMode), stream)
     }
 
     return { streamType, objectMode }
   }
 
-  function resolveStream (arg, id) {
+  resolveStream (arg, id) {
     var { streamType, objectMode } = arg
     var ds = objectMode ? duplexify.obj() : duplexify()
 
     if (streamType & READABLE) {
       var rs = through({ objectMode })
-      var rsT = getTransportStream(id, READABLE, rs)
+      var rsT = this.getTransportStream(id, READABLE, rs)
       pump(rsT, maybeConvert(false, objectMode), rs)
       ds.setReadable(rs)
     }
     if (streamType & WRITABLE) {
       var ws = through({ objectMode })
-      var wsT = getTransportStream(id, WRITABLE, ws)
+      var wsT = this.getTransportStream(id, WRITABLE, ws)
       pump(ws, maybeConvert(objectMode, false), wsT)
       ds.setWritable(ws)
     }
@@ -128,77 +128,5 @@ module.exports = function streamBus (opts) {
   }
 }
 
-function isStream (obj) {
-  return isObject(obj) && obj && (obj._readableState || obj._writableState)
-}
+module.exports.StreamBus = StreamBus
 
-function isReadable (obj) {
-  return isStream(obj) && typeof obj._read === 'function' && typeof obj._readableState === 'object'
-}
-
-function isWritable (obj) {
-  return isStream(obj) && typeof obj._write === 'function' && typeof obj._writableState === 'object'
-}
-
-function isTransform (obj) {
-  return isStream(obj) && typeof obj._transform === 'function' && typeof obj._transformState === 'object'
-}
-
-function isObjectStream (stream) {
-  if (isWritable(stream)) return stream._writableState.objectMode
-  if (isReadable(stream)) return stream._readableState.objectMode
-}
-
-function isBuffer (buf) {
-  return Buffer.isBuffer(buf)
-}
-
-function getStreamType (stream) {
-  var type = 0
-
-  // Special handling for transform streams. If it has no pipes attached,
-  // assume its readable. Otherwise, assume its writable. If this leads
-  // to unexpected behaviors, set up a duplex stream with duplexify and
-  // use either setReadable() or setWritable() to only set up one end.
-  if (isTransform(stream)) {
-    if (typeof stream._readableState === 'object' && !stream._readableState.pipes) {
-      return READABLE
-    } else {
-      return WRITABLE
-    }
-  }
-
-  if (isReadable(stream)) type = type | READABLE
-  if (isWritable(stream)) type = type | WRITABLE
-
-  return type
-}
-
-function pass (objectMode) {
-  return through({objectMode})
-}
-
-function toObj () {
-  return through.obj(function (chunk, enc, next) {
-    this.push(JSON.parse(chunk))
-    next()
-  })
-}
-
-function toBin () {
-  return through.obj(function (chunk, enc, next) {
-    this.push(JSON.stringify(chunk))
-    next()
-  })
-}
-
-function maybeConvert (oneInObjMode, twoInObjMode) {
-  if (oneInObjMode && !twoInObjMode) return toBin()
-  if (!oneInObjMode && twoInObjMode) return toObj()
-  if (oneInObjMode && twoInObjMode) return pass(true)
-  if (!oneInObjMode && !twoInObjMode) return pass(false)
-}
-
-function isObject (obj) {
-  return (typeof obj === 'object')
-}

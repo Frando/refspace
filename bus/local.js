@@ -1,21 +1,21 @@
-const EventEmitter = require('events').EventEmitter
+const { queue } = require('../util/queue')
 
 module.exports = function localBus (peer1, peer2) {
-  let _a = new EventEmitter()
-  let _b = new EventEmitter()
+  let qa = queue()
+  let qb = queue()
 
   let a = {
-    postMessage: msg => _b.emit('message', msg),
-    onmessage: (fn) => _a.on('message', fn)
+    postMessage: msg => qb.push(msg),
+    onmessage: fn => qa.take(fn)
   }
   let b = {
-    postMessage: msg => _a.emit('message', msg),
-    onmessage: (fn) => _b.on('message', fn)
+    postMessage: msg => qa.push(msg),
+    onmessage: fn => qb.take(fn)
   }
 
   if (peer1 && peer2) {
-    peer1.addPeer(peer2.id, a)
-    peer2.addPeer(peer1.id, b)
+    peer1.addPeer(a)
+    peer2.addPeer(b)
   }
 
   return [a, b]

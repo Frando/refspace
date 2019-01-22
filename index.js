@@ -42,10 +42,12 @@ class RefStore extends EventEmitter {
     }
     if (!ref.peer) ref.peer = this.id
 
-    if (isObject(value)) value[REF] = ref
+    if (isObject(value)) {
+      value[REF] = ref
+    }
 
-    // todo: this gives endless circles
-    // value = this.makeProxy(ref)
+    // todo: maybe also make a proxy for local calls
+    // value = this.makeProxy(ref, 'local')
 
     this._set(ref, value)
     return value
@@ -103,13 +105,20 @@ class RefStore extends EventEmitter {
     return object
   }
 
-  addPeer (id, peer) {
+  addPeer (peer) {
     peer.onmessage(msg => {
-      const { ref, method, args, from } = msg
-      this.pushCall(ref, { method, args, from })
+      if (msg.type === 'hello') {
+        let id = msg.id
+        this.peers.set(id, peer)
+        this.emit('peer', { id, peer })
+      } else {
+        this.postMessage(msg)
+      }
     })
-    // peer.pushMessage({ ref: { peer: this.id }})
-    this.peers.set(id, peer)
+
+    setImmediate(() => {
+      peer.postMessage({ type: 'hello', id: this.id })
+    })
   }
 
   addSpace (name, handler) {
@@ -144,6 +153,16 @@ class RefStore extends EventEmitter {
     return ret
   }
 
+  postMessage (msg) {
+    const { type, ref, opts, to } = msg
+
+    if (to !== this.id) return
+
+    switch (type) {
+      case 'call': return this.pushCall(ref, opts)
+    }
+  }
+
   // make a call
   // if ref is of type function method should be null
   // if ref is of type option method is required
@@ -152,29 +171,30 @@ class RefStore extends EventEmitter {
   // returns a promise
   pushCall (ref, opts) {
     ref = getRef(ref) 
-    // if (opts.args) opts.args = this.encodeArgs(args)
-
+    if (!ref) throw new Error('Invalid ref: ' + ref)
     if (ref.peer === this.id) return this.localCall(ref, opts)
+    else return this.remoteCall(ref, opts)
+  }
 
+  remoteCall (ref, opts) {
     if (!this.peers.has(ref.peer)) throw new Error('Unknown peer: ' + ref.peer)
     const peer = this.peers.get(ref.peer)
 
-    let { method, args, from } = opts
-    args = this.encodeArgs(args)
+    opts.args = this.encodeArgs(opts.args)
 
     let promise, done
-    if (from === undefined) {
+    if (opts.from === undefined) {
       [promise, done] = prom()
       let doneRef = this.ref(done)
-      from = this.shorten(doneRef)
+      opts.from = this.shorten(doneRef)
     }
 
     ref = this.shorten(ref)
 
-    let msg = { ref, method, args, from }
+    let msg = { type: 'call', ref, opts, to: ref.peer }
 
     peer.postMessage(msg)
-    this.emit('call', msg)
+
     if (promise) return promise
   }
 

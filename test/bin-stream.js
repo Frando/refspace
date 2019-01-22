@@ -1,9 +1,9 @@
 const tape = require('tape')
 const refspace = require('..')
 const streambus = require('../bus/stream')
-const localbus = require('../bus/local')
 const pump = require('pump')
 const stream = require('stream')
+const { prom } = require ('../util/async')
 
 function make2 () {
   const p1 = refspace()
@@ -12,17 +12,27 @@ function make2 () {
   const s1 = streambus()
   const s2 = streambus()
 
+  p1.addPeer(s1)
+  p2.addPeer(s2)
+
   pump(s1.stream, s2.stream)
   pump(s2.stream, s1.stream)
 
-  p1.addPeer(p2.id, s2)
-  p2.addPeer(p1.id, s1)
+  const [promise, done] = prom()
 
-  return [p1, p2]
+  p1.on('peer', finish)
+  p2.on('peer', finish)
+
+  let i = 0
+  function finish () {
+    if (++i === 2) done(null, [p1, p2])
+  }
+
+  return promise 
 }
 
 tape('streaming', async t => {
-  const [p1, p2] = make2()
+  const [p1, p2] = await make2()
 
   let val = {
     id: 'foo',
@@ -68,7 +78,7 @@ tape('read stream', async t => {
     }
   }
 
-  const [a, b] = make2()
+  const [a, b] = await make2()
   let ref = a.add(api)
   let remote = b.add(ref)
   // let rs = await remote.rs('foo')
@@ -76,6 +86,7 @@ tape('read stream', async t => {
   remote.rs('foo', (err, rs) => {
     t.equal(err, null)
     var i = 0
+    console.log('RS', rs)
     rs.on('data', (data) => {
       t.equal(data, 'foo' + i)
       i++
