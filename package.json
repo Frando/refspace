@@ -1,8 +1,8 @@
 {
-  "name": "refstore",
+  "name": "refspace",
   "version": "0.1.0",
-  "description": "Let objects move and talk",
-  "main": "RefStore.js",
+  "description": "Meshing object store",
+  "main": "index.js",
   "directories": {
     "test": "test"
   },
@@ -11,23 +11,24 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arso-project/refstore.git"
+    "url": "git+https://github.com/Frando/refspace.git"
   },
   "author": "Franz Heinzmann <frando@unbiskant.org>",
   "license": "GPL-3.0",
   "bugs": {
-    "url": "https://github.com/arso-project/refstore/issues"
+    "url": "https://github.com/Frando/refspace/issues"
   },
-  "homepage": "https://github.com/arso-project/refstore#readme",
+  "homepage": "https://github.com/Frando/refspace#readme",
   "devDependencies": {
-    "duplexify": "^3.6.1",
-    "msgpack-lite": "^0.1.26",
-    "multiplex": "^6.7.0",
-    "pump": "^3.0.0",
     "tape": "^4.9.2"
   },
   "dependencies": {
+    "nanoid": "^2.0.1",
     "nanoid-dictionary": "^2.0.0",
-    "through2": "^3.0.0"
+    "through2": "^3.0.0",
+    "duplexify": "^3.6.1",
+    "msgpack-lite": "^0.1.26",
+    "multiplex": "^6.7.0",
+    "pump": "^3.0.0"
   }
 }

@@ -1,6 +1,16 @@
 # refspace
 
-A ref is a reference to a value. A value is either a primitive, a function or an object. An object has values and methods. A *refspace* holds values with attached ref objects. A *refspace* can be connected to another refspace, which allows the other to call all methods on object refs. The transport bus is pluggable.
+A ref is a reference to a value. A value is either a primitive, a function or an object. An object has values and methods. A *refspace* holds values with attached ref objects. A *refspace* can be connected to another refspace, which allows the other to call methods on object refs. The transport bus is pluggable. Included is a local bus and a bus that works over any binary stream. A bus to work over window.postMessage is in the works.
+
+When calling methods, you can pass arguments and return values as you would on local objects. All methods have to be asynchronous (return a promise). You may only use as arguments:
+
+* primitives
+* functions (they can be invoked from an remote end)
+* plain json objects
+* other refs
+* streams
+* array buffers
+
 
 ```javascript
 const value = {

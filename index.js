@@ -9,7 +9,7 @@ const nanoid = () => generate(nolookalikes, 8)
 const REF = Symbol('ref')
 const IS_REF = Symbol('is-ref')
 
-class RefStore extends EventEmitter {
+class RefSpace extends EventEmitter {
   constructor (id, opts) {
     super()
     this.store = new MapOfMaps() 
@@ -261,14 +261,14 @@ class RefStore extends EventEmitter {
   }
 }
 
-function refstore (id) {
-  return new RefStore(id)
+function refspace (id) {
+  return new RefSpace(id)
 }
 
-refstore.REF = REF
-refstore.RefStore = RefStore
+refspace.REF = REF
+refspace.RefSpace = RefSpace
 
-module.exports = refstore
+module.exports = refspace
 
 function isObject (value) {
   return value instanceof Object

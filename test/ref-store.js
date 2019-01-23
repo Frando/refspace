@@ -1,14 +1,14 @@
 const tape = require('tape')
 const { prom } = require('../util/async')
 
-const refstore = require('..')
+const refspace = require('..')
 const localBus = require('../bus/local')
 
-const { REF, RefStore, logRef } = refstore
+const { REF } = refspace
 
 function make2 () {
-  const p1 = refstore()
-  const p2 = refstore()
+  const p1 = refspace()
+  const p2 = refspace()
 
   localBus(p1, p2)
 
@@ -25,7 +25,7 @@ function make2 () {
   }
 }
 
-tape('refstore basics', async t => {
+tape('refspace basics', async t => {
   const [server, client] = await make2()
 
   const value = {
